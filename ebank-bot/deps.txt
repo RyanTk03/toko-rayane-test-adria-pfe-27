@@ -1,0 +1,17 @@
+[INFO] Scanning for projects...
+[INFO] Loaded 24126 auto-discovered prefixes for remote repository central (prefixes-central.txt)
+[ERROR] [ERROR] Some problems were encountered while processing the POMs:
+[ERROR] 'dependencies.dependency.version' for com.zgamelogic:spring-boot-starter-discord:jar is missing. @ line 76, column 21
+[ERROR] 'dependencies.dependency.version' for org.telegram:telegrambots-spring-boot-starter:jar is missing. @ line 81, column 21
+ @ 
+[ERROR] The build could not read 1 project -> [Help 1]
+[ERROR]   
+[ERROR]   The project tech.tokorayane:ebank-bot:0.0.1-SNAPSHOT (/home/rayane/sys-dis/ebank-ms-app/ebank-bot/pom.xml) has 2 errors
+[ERROR]     'dependencies.dependency.version' for com.zgamelogic:spring-boot-starter-discord:jar is missing. @ line 76, column 21
+[ERROR]     'dependencies.dependency.version' for org.telegram:telegrambots-spring-boot-starter:jar is missing. @ line 81, column 21
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/ProjectBuildingException
