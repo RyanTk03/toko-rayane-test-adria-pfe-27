@@ -1,0 +1,158 @@
+name: bank-platform
+
+# Variables communes
+x-java-build-args: &java-build-args
+  JAVA_VERSION: ${JAVA_VERSION:-17}
+
+x-common-env: &common-env
+  JAVA_TOOL_OPTIONS: -Xmx512m
+
+# Enregistrement dans Eureka (nom de service Docker au lieu de localhost)
+x-eureka-env: &eureka-env
+  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+  EUREKA_INSTANCE_PREFERIPADDRESS: "true"
+
+services:
+
+  kafka:
+    image: apache/kafka:3.9.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  config-service:
+    build:
+      context: ./config-service
+      args: *java-build-args
+    environment: *common-env
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8888/transaction-service/default"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: on-failure
+
+  eureka-server:
+    build:
+      context: ./eureka-server
+      args: *java-build-args
+    environment: *common-env
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8761/"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: on-failure
+
+  account-service:
+    build:
+      context: ./account-service
+      args: *java-build-args
+    environment:
+      <<: [*common-env, *eureka-env]
+      # console H2 accessible depuis le navigateur de l'hôte (développement uniquement)
+      SPRING_H2_CONSOLE_SETTINGS_WEB_ALLOW_OTHERS: "true"
+    ports:
+      - "8081:8081"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    restart: on-failure
+
+  transaction-service:
+    build:
+      context: ./transaction-service
+      args: *java-build-args
+    environment:
+      <<: [*common-env, *eureka-env]
+      SPRING_CONFIG_IMPORT: configserver:http://config-service:8888
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8082:8082"
+    depends_on:
+      config-service:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    restart: on-failure
+
+  assistant-service:
+    build:
+      context: ./assistant-service
+      args: *java-build-args
+    environment:
+      <<: [*common-env, *eureka-env]
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SPRING_AI_MCP_CLIENT_SSE_CONNECTIONS_ACCOUNT_URL: http://account-service:8081
+      SPRING_AI_MCP_CLIENT_SSE_CONNECTIONS_TRANSACTION_URL: http://transaction-service:8082
+    ports:
+      - "8083:8083"
+    # le client MCP se connecte aux deux serveurs dès le démarrage
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+      transaction-service:
+        condition: service_healthy
+    restart: on-failure
+
+  transaction-consumer-service:
+    build:
+      context: ./transaction-consumer-service
+      args: *java-build-args
+    environment:
+      <<: *common-env
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: on-failure
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      args: *java-build-args
+    environment:
+      <<: [*common-env, *eureka-env]
+    ports:
+      - "8080:8080"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    restart: on-failure
